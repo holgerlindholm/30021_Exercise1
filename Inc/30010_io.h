@@ -20,6 +20,15 @@ uint8_t uart_get_char();
 uint8_t uart_get_count();
 void uart_clear();
 
+
+/********************************/
+/*** OpenLog Helper Functions ***/
+/********************************/
+void openlog_init(uint32_t baud);
+void openlog_put_char(uint8_t c);
+void openlog_put_string(const char *str);
+uint8_t openlog_get_char(void);
+
 /*****************************/
 /*** LCD Control Functions ***/
 /*****************************/

@@ -126,10 +126,70 @@ void uart_init(uint32_t baud) {
     NVIC_EnableIRQ(USART2_IRQn);
 }
 
+/********************************/
+/*** OpenLog Helper Functions ***/
+/********************************/
+
+// Initialize USART1 on PA9 (TX) and PA10 (RX) at specified baud rate (default: 9600)
+void openlog_init(uint32_t baud) {
+    // Enable Clocks for GPIOA and USART1
+    RCC->AHBENR  |= RCC_AHBPeriph_GPIOA;
+    RCC->APB2ENR |= RCC_APB2Periph_USART1;
+
+    // Connect PA9 and PA10 to USART1 (Alternate Function 7)
+    GPIOA->AFR[1] &= ~((0x0F << ((9 - 8) * 4)) | (0x0F << ((10 - 8) * 4)));
+    GPIOA->AFR[1] |=  ((0x07 << ((9 - 8) * 4)) | (0x07 << ((10 - 8) * 4)));
+
+    // Configure PA9 and PA10 for 10 MHz Alternate Function
+    GPIOA->OSPEEDR &= ~((0x03 << (9 * 2)) | (0x03 << (10 * 2)));
+    GPIOA->OSPEEDR |=  ((0x01 << (9 * 2)) | (0x01 << (10 * 2)));
+    GPIOA->OTYPER  &= ~((0x01 << 9) | (0x01 << 10));
+    GPIOA->MODER   &= ~((0x03 << (9 * 2)) | (0x03 << (10 * 2)));
+    GPIOA->MODER   |=  ((0x02 << (9 * 2)) | (0x02 << (10 * 2)));
+    GPIOA->PUPDR   &= ~((0x03 << (9 * 2)) | (0x03 << (10 * 2)));
+    GPIOA->PUPDR   |=  ((0x01 << (9 * 2)) | (0x01 << (10 * 2)));
+
+    // Configure USART1 registers
+    USART1->CR1 &= ~0x00000001; // Disable USART1
+    USART1->CR2 &= ~0x00003000; // 1 stop bit
+    USART1->CR1 &= ~(0x00001000 | 0x00000400 | 0x00000200); // 8 bits, no parity
+    USART1->CR1 |=  (0x00000004 | 0x00000008); // Enable RX and TX
+    USART1->CR3 &= ~(0x00000100 | 0x00000200); // No hardware flow control
+
+    // Set Baud Rate (9600 Baud @ 8 MHz clock = 833)
+    RCC_ClocksTypeDef RCC_ClocksStatus;
+    RCC_GetClocksFreq(&RCC_ClocksStatus);
+    uint32_t apbclock = RCC_ClocksStatus.USART1CLK_Frequency;
+    if (apbclock == 0) apbclock = 8000000;
+
+    USART1->BRR = (uint16_t)(apbclock / baud);
+    USART1->CR1 |= 0x00000001; // Enable USART1
+}
+
+// Transmit a single character to OpenLog over USART1
+void openlog_put_char(uint8_t c) {
+    USART_SendData(USART1, (uint8_t)c);
+    while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET) {}
+}
+
+// Transmit a string to OpenLog over USART1
+void openlog_put_string(const char *str) {
+    while (*str) {
+        openlog_put_char((uint8_t)*str++);
+    }
+}
+
+// Receive a single character from OpenLog over USART1 (blocking)
+uint8_t openlog_get_char(void) {
+    while (USART_GetFlagStatus(USART1, USART_FLAG_RXNE) == RESET) {}
+    return (uint8_t)(USART_ReceiveData(USART1) & 0xFF);
+}
+
+
 /*****************************/
 /*** LCD Control Functions ***/
 /*****************************/
-void lcd_transmit_byte(uint8_t data) {
+/*void lcd_transmit_byte(uint8_t data) {
     GPIOB->ODR &= ~(0x0001 << 6); // CS = 0 - Start Transmission
     while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE) != SET) { }
     SPI_SendData8(SPI2, data);
@@ -216,7 +276,7 @@ void lcd_reset()
 
     lcd_transmit_byte(0xA6);  // Set normal mode
 }
-
+*/
 void lcd_init() {
     // Enable Clocks
     RCC->AHBENR  |= 0x00020000 | 0x00040000;    // Enable Clock for GPIO Banks A and B
